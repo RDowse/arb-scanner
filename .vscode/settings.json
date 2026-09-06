@@ -1,0 +1,9 @@
+{
+	"gopls": {
+		"build.buildFlags": ["-tags=db,live"]
+	},
+	"go.testTags": "db",
+	"go.testEnvVars": {
+		"TEST_DATABASE_URL": "postgres://arb:arb@localhost:5432/arb_test?sslmode=disable"
+	}
+}

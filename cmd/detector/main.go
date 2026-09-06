@@ -33,7 +33,7 @@ func run(ctx context.Context, log *slog.Logger) error {
 	log.Info("detector starting", "strategies", cfg.StrategyPath)
 
 	// TODO: load strategies, run migrations, start venue feeds, start eval loop.
-	
+
 	log.Info("Starting venue..")
 	feed := venue.NewCoinbase(log, 10, "BTC/USD", "ETH/USD")
 	go func() {
