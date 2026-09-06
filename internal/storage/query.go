@@ -19,8 +19,6 @@ const (
 	maxLimit     = 1000
 )
 
-// Record is a persisted opportunity: the observation the strategy reported plus
-// the sighting window and best edge the sink accumulated across ticks.
 type Record struct {
 	ID          string            `json:"id"`
 	Strategy    string            `json:"strategy"`
@@ -38,8 +36,6 @@ type Record struct {
 	Legs        []opportunity.Leg `json:"legs"`
 }
 
-// Filter selects a window of opportunities. A zero field is unset: no strategy
-// filter, no bound on that end of the range.
 type Filter struct {
 	Strategy string
 	From     time.Time
@@ -63,8 +59,7 @@ const selectColumns = `
 	amount_in, amount_out, gross_profit, fees, net_profit, net_edge_bps,
 	max_edge_bps, legs`
 
-// List returns the most recently seen opportunities first, so a page of results
-// is the current state of the market rather than the oldest history.
+// List returns the most recently seen opportunities.
 func (p *Postgres) List(ctx context.Context, f Filter) ([]Record, error) {
 	rows, err := p.pool.Query(ctx, `SELECT`+selectColumns+`
 		FROM opportunities
@@ -110,8 +105,7 @@ func (p *Postgres) Get(ctx context.Context, id string) (Record, error) {
 	return scanRecord(rows)
 }
 
-// Strategies lists the strategies that have produced an opportunity, for the
-// filter options a client offers.
+// Strategies lists the strategies that have produced an opportunity.
 func (p *Postgres) Strategies(ctx context.Context) ([]string, error) {
 	rows, err := p.pool.Query(ctx, "SELECT DISTINCT strategy FROM opportunities ORDER BY strategy")
 	if err != nil {

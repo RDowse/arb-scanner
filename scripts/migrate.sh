@@ -49,6 +49,24 @@ else
 	}
 fi
 
+# The server may still be starting, so wait for it rather than depending on the
+# orchestrator to order us after it.
+wait_for_postgres() {
+	local attempts="${MIGRATE_WAIT_SECONDS:-60}"
+
+	for _ in $(seq 1 "$attempts"); do
+		if psql_run -q -tAc "SELECT 1" >/dev/null 2>&1; then
+			return 0
+		fi
+		sleep 1
+	done
+
+	echo "error: postgres did not accept connections within ${attempts}s" >&2
+	return 1
+}
+
+wait_for_postgres
+
 psql_run -q -c "CREATE TABLE IF NOT EXISTS schema_migrations (
 	version    TEXT PRIMARY KEY,
 	applied_at TIMESTAMPTZ NOT NULL DEFAULT now()

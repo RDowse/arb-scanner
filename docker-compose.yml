@@ -24,11 +24,11 @@ services:
     volumes:
       - ./scripts:/src/scripts:ro
       - ./internal/storage/migrations:/src/internal/storage/migrations:ro
-    working_dir: /src
-    entrypoint: ["bash", "scripts/migrate.sh"]
     depends_on:
       postgres:
         condition: service_healthy
+    working_dir: /src
+    entrypoint: ["bash", "scripts/migrate.sh"]
     restart: "no"
 
   detector:
@@ -43,9 +43,6 @@ services:
       LOG_LEVEL: info
     volumes:
       - ./config:/etc/arb-scanner:ro
-    depends_on:
-      migrate:
-        condition: service_completed_successfully
     restart: unless-stopped
 
   api-server:
@@ -61,9 +58,6 @@ services:
       LOG_LEVEL: info
     ports:
       - "8080:8080"
-    depends_on:
-      migrate:
-        condition: service_completed_successfully
     restart: unless-stopped
 
 volumes:
