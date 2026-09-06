@@ -10,8 +10,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/RDowse/arb-scanner/internal/api"
 	"github.com/RDowse/arb-scanner/internal/config"
 	"github.com/RDowse/arb-scanner/internal/logging"
+	"github.com/RDowse/arb-scanner/internal/storage"
 )
 
 func main() {
@@ -32,17 +34,24 @@ func run(ctx context.Context, log *slog.Logger) error {
 		return err
 	}
 
-	// TODO: replace with internal/api router backed by internal/storage.
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"status":"ok"}`))
-	})
+	db, err := storage.Open(ctx, cfg.DatabaseURL)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+
+	log.Info("waiting for schema")
+	if err := db.AwaitSchema(ctx, 60*time.Second); err != nil {
+		return err
+	}
 
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           mux,
+		Handler:           api.New(db, log).Handler(),
 		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       15 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       60 * time.Second,
 	}
 
 	serveErr := make(chan error, 1)
