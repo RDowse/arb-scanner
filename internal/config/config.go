@@ -10,6 +10,11 @@ import (
 type Detector struct {
 	DatabaseURL  string
 	StrategyPath string
+
+	// EvalInterval is how often books are evaluated; MaxBookAge is how old a
+	// book may be and still be priced against.
+	EvalInterval time.Duration
+	MaxBookAge   time.Duration
 }
 
 type API struct {
@@ -28,6 +33,22 @@ func DetectorFromEnv() (Detector, error) {
 	if c.DatabaseURL == "" {
 		errs = append(errs, errors.New("DATABASE_URL is required"))
 	}
+
+	evalInterval, err := envDuration("EVAL_INTERVAL", time.Second)
+	if err != nil {
+		errs = append(errs, err)
+	}
+	if evalInterval <= 0 {
+		errs = append(errs, fmt.Errorf("EVAL_INTERVAL must be positive, got %s", evalInterval))
+	}
+	c.EvalInterval = evalInterval
+
+	maxBookAge, err := envDuration("MAX_BOOK_AGE", 5*time.Second)
+	if err != nil {
+		errs = append(errs, err)
+	}
+	c.MaxBookAge = maxBookAge
+
 	return c, errors.Join(errs...)
 }
 

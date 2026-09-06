@@ -40,11 +40,6 @@ func run(ctx context.Context, log *slog.Logger) error {
 	}
 	defer db.Close()
 
-	log.Info("waiting for schema")
-	if err := db.AwaitSchema(ctx, 60*time.Second); err != nil {
-		return err
-	}
-
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
 		Handler:           api.New(db, log).Handler(),

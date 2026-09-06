@@ -55,6 +55,9 @@ services:
       LOG_LEVEL: info
     volumes:
       - ./config:/etc/arb-scanner:ro
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
     restart: unless-stopped
 
   api-server:
@@ -70,6 +73,9 @@ services:
       LOG_LEVEL: info
     ports:
       - "8080:8080"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
     restart: unless-stopped
 
 volumes:
