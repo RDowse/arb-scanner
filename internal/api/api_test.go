@@ -95,20 +95,34 @@ func TestListOpportunities(t *testing.T) {
 			t.Errorf("content type = %q", got)
 		}
 
-		got := decodeBody[[]storage.Record](t, w)
-		if len(got) != 1 || got[0].ID != "abc" {
+		got := decodeBody[opportunityPage](t, w)
+		if len(got.Opportunities) != 1 || got.Opportunities[0].ID != "abc" {
 			t.Fatalf("body = %s", w.Body)
 		}
-		if !got[0].MaxEdgeBps.Equal(decimal.NewFromInt(120)) {
-			t.Errorf("max edge = %s, want 120: decimals must survive the round trip", got[0].MaxEdgeBps)
+		if got.Count != 1 {
+			t.Errorf("count = %d, want 1", got.Count)
+		}
+		if got.Limit != 100 {
+			t.Errorf("limit = %d, want the default 100", got.Limit)
+		}
+		if !got.Opportunities[0].MaxEdgeBps.Equal(decimal.NewFromInt(120)) {
+			t.Errorf("max edge = %s, want 120: decimals must survive the round trip", got.Opportunities[0].MaxEdgeBps)
 		}
 	})
 
 	t.Run("renders no results as an empty array", func(t *testing.T) {
 		w := serve(&stubStore{records: []storage.Record{}}, "/opportunities")
 
-		if body := w.Body.String(); body != "[]\n" {
-			t.Errorf("body = %q, want an empty array", body)
+		if body := w.Body.String(); !strings.Contains(body, `"opportunities":[]`) {
+			t.Errorf("body = %q, want an empty array inside the envelope", body)
+		}
+	})
+
+	t.Run("reports the limit it applied, not the one asked for", func(t *testing.T) {
+		w := serve(&stubStore{}, "/opportunities?limit=5000")
+
+		if got := decodeBody[opportunityPage](t, w); got.Limit != 1000 {
+			t.Errorf("limit = %d, want the 1000 cap", got.Limit)
 		}
 	})
 
@@ -201,9 +215,12 @@ func TestListStrategies(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200: %s", w.Code, w.Body)
 	}
-	got := decodeBody[[]string](t, w)
-	if len(got) != 2 || got[0] != "cross_venue" || got[1] != "triangular" {
+	got := decodeBody[strategyList](t, w)
+	if len(got.Strategies) != 2 || got.Strategies[0] != "cross_venue" || got.Strategies[1] != "triangular" {
 		t.Errorf("body = %s", w.Body)
+	}
+	if got.Count != 2 {
+		t.Errorf("count = %d, want 2", got.Count)
 	}
 }
 

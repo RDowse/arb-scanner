@@ -133,7 +133,7 @@ func TestPostgresList(t *testing.T) {
 	})
 }
 
-func TestFilterLimit(t *testing.T) {
+func TestFilterEffectiveLimit(t *testing.T) {
 	tests := []struct {
 		name string
 		in   int
@@ -146,7 +146,7 @@ func TestFilterLimit(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := (Filter{Limit: tt.in}).limit(); got != tt.want {
+			if got := (Filter{Limit: tt.in}).EffectiveLimit(); got != tt.want {
 				t.Errorf("limit() = %d, want %d", got, tt.want)
 			}
 		})

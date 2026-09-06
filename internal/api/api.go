@@ -21,6 +21,19 @@ type Store interface {
 	Strategies(ctx context.Context) ([]string, error)
 }
 
+// opportunityPage wraps the collection so pagination metadata can be added
+// without changing the shape clients already parse.
+type opportunityPage struct {
+	Opportunities []storage.Record `json:"opportunities"`
+	Count         int              `json:"count"`
+	Limit         int              `json:"limit"`
+}
+
+type strategyList struct {
+	Strategies []string `json:"strategies"`
+	Count      int      `json:"count"`
+}
+
 type Server struct {
 	store Store
 	log   *slog.Logger
@@ -52,7 +65,11 @@ func (s *Server) listOpportunities(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not read opportunities")
 		return
 	}
-	writeJSON(w, http.StatusOK, records)
+	writeJSON(w, http.StatusOK, opportunityPage{
+		Opportunities: records,
+		Count:         len(records),
+		Limit:         filter.EffectiveLimit(),
+	})
 }
 
 func (s *Server) getOpportunity(w http.ResponseWriter, r *http.Request) {
@@ -76,7 +93,7 @@ func (s *Server) listStrategies(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not read strategies")
 		return
 	}
-	writeJSON(w, http.StatusOK, names)
+	writeJSON(w, http.StatusOK, strategyList{Strategies: names, Count: len(names)})
 }
 
 // health reports that the process is serving. Per-venue feed age arrives with

@@ -43,7 +43,7 @@ type Filter struct {
 	Limit    int
 }
 
-func (f Filter) limit() int {
+func (f Filter) EffectiveLimit() int {
 	switch {
 	case f.Limit <= 0:
 		return defaultLimit
@@ -68,7 +68,7 @@ func (p *Postgres) List(ctx context.Context, f Filter) ([]Record, error) {
 		  AND ($3::timestamptz IS NULL OR last_seen_at <= $3)
 		ORDER BY last_seen_at DESC, id
 		LIMIT $4`,
-		f.Strategy, nullTime(f.From), nullTime(f.To), f.limit())
+		f.Strategy, nullTime(f.From), nullTime(f.To), f.EffectiveLimit())
 	if err != nil {
 		return nil, fmt.Errorf("list opportunities: %w", err)
 	}
