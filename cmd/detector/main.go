@@ -81,7 +81,8 @@ func run(ctx context.Context, log *slog.Logger) error {
 		"max_book_age", cfg.MaxBookAge,
 	)
 
-	err = detector.New(log, cfg.EvalInterval, feeds, strategies, db).Run(ctx)
+	d := detector.New(log, cfg.EvalInterval, feeds, strategies, db)
+	err = d.Run(ctx)
 
 	log.Info("detector stopped")
 	return err

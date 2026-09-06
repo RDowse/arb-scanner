@@ -1,6 +1,3 @@
-// Package detector joins the venue feeds to the strategies: every tick it takes
-// the books each feed currently holds, asks each strategy what it finds in
-// them, and persists the result.
 package detector
 
 import (
@@ -13,8 +10,6 @@ import (
 	"github.com/RDowse/arb-scanner/internal/strategy"
 )
 
-// storeTimeout bounds one tick's write so a slow database cannot stall
-// evaluation indefinitely.
 const storeTimeout = 10 * time.Second
 
 type Feed interface {
@@ -45,15 +40,13 @@ func New(log *slog.Logger, interval time.Duration, feeds []Feed, strategies []st
 	}
 }
 
-// Run starts every feed and evaluates on each tick until ctx is cancelled. A
-// feed that dies takes only its own books with it: the remaining venues keep
-// being evaluated, and routes touching the dead one simply stop appearing.
 func (d *Detector) Run(ctx context.Context) error {
 	for _, feed := range d.feeds {
 		go func() {
 			if err := feed.Run(ctx); err != nil && ctx.Err() == nil {
 				d.log.Error("feed stopped", "venue", feed.Name(), "err", err)
 			}
+			// TODO handle feed restart
 		}()
 	}
 
@@ -72,10 +65,9 @@ func (d *Detector) Run(ctx context.Context) error {
 	}
 }
 
-// evaluate runs one tick. Nothing here is fatal: a strategy that errors and a
-// write that fails are both logged and left for the next tick, because the
-// alternative is a detector that stops watching the market.
 func (d *Detector) evaluate(ctx context.Context) {
+	started := time.Now()
+
 	books := d.books()
 	if len(books) == 0 {
 		d.log.Debug("no books to evaluate")
@@ -89,11 +81,13 @@ func (d *Detector) evaluate(ctx context.Context) {
 			d.log.Error("strategy failed", "strategy", s.Name(), "err", err)
 			continue
 		}
+		d.log.Debug("strategy evaluated", "strategy", s.Name(), "opportunities", len(opps))
 		found = append(found, opps...)
 	}
 
+	d.log.Debug("tick", "books", len(books), "opportunities", len(found), "took", time.Since(started).Round(time.Microsecond))
+
 	if len(found) == 0 {
-		d.log.Debug("no opportunities", "books", len(books))
 		return
 	}
 	strategy.Rank(found)

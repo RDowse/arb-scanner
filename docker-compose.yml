@@ -52,7 +52,7 @@ services:
     environment:
       DATABASE_URL: postgres://arb:arb@postgres:5432/arb?sslmode=disable
       ARB_CONFIG: /etc/arb-scanner/strategies.yaml
-      LOG_LEVEL: info
+      LOG_LEVEL: debug
     volumes:
       - ./config:/etc/arb-scanner:ro
     depends_on:
