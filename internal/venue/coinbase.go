@@ -63,33 +63,8 @@ func (c *Coinbase) Books() []market.Book {
 	return out
 }
 
-// Run maintains the subscription until ctx is cancelled, reconnecting with
-// backoff. Every disconnect drops the cached books: without per-message
-// sequencing there is no way to tell a resumed stream from a gapped one, so a
-// stale book is preferred over a silently corrupt one.
 func (c *Coinbase) Run(ctx context.Context) error {
-	backoff := time.Second
-	const maxBackoff = 30 * time.Second
-
-	for {
-		err := c.session(ctx)
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-
-		c.invalidate()
-		c.log.Warn("feed dropped, reconnecting", "err", err, "retry_in", backoff)
-
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(backoff):
-		}
-
-		if backoff *= 2; backoff > maxBackoff {
-			backoff = maxBackoff
-		}
-	}
+	return runFeed(ctx, c.log, c.session, c.invalidate)
 }
 
 func (c *Coinbase) session(ctx context.Context) error {

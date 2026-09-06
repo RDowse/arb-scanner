@@ -34,13 +34,22 @@ func run(ctx context.Context, log *slog.Logger) error {
 
 	// TODO: load strategies, run migrations, start venue feeds, start eval loop.
 
-	log.Info("Starting venue..")
-	feed := venue.NewCoinbase(log, 10, "BTC/USD", "ETH/USD")
-	go func() {
-		if err := feed.Run(ctx); err != nil && ctx.Err() == nil {
-			log.Error("coinbase feed stopped", "err", err)
-		}
-	}()
+	// A feed keeps one venue's books current; the eval loop reads them per tick.
+	feeds := []interface {
+		Name() string
+		Run(context.Context) error
+	}{
+		venue.NewCoinbase(log, 10, "BTC/USD", "ETH/USD"),
+		venue.NewKraken(log, 10, "BTC/USD", "ETH/USD"),
+	}
+
+	for _, feed := range feeds {
+		go func() {
+			if err := feed.Run(ctx); err != nil && ctx.Err() == nil {
+				log.Error("feed stopped", "venue", feed.Name(), "err", err)
+			}
+		}()
+	}
 
 	<-ctx.Done()
 

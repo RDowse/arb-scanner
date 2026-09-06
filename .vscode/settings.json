@@ -2,8 +2,9 @@
 	"gopls": {
 		"build.buildFlags": ["-tags=db,live"]
 	},
-	"go.testTags": "db",
+	"go.testTags": "db,live",
 	"go.testEnvVars": {
-		"TEST_DATABASE_URL": "postgres://arb:arb@localhost:5432/arb_test?sslmode=disable"
+		"TEST_DATABASE_URL": "postgres://arb:arb@localhost:5432/arb_test?sslmode=disable",
+		"LIVE_DURATION": "20s"
 	}
 }
