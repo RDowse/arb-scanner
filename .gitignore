@@ -1,2 +1,9 @@
 *.pdf
 plan.md
+
+# Delve debug binaries, written next to the package being debugged
+__debug_bin*
+*.test
+*.out
+
+.env
