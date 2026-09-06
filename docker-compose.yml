@@ -31,6 +31,18 @@ services:
     entrypoint: ["bash", "scripts/migrate.sh"]
     restart: "no"
 
+  # Demonstration rows for the API to serve data before the detector generates opportunities.
+  seed:
+    image: postgres:16-alpine
+    environment:
+      DATABASE_URL: postgres://arb:arb@postgres:5432/arb?sslmode=disable
+    volumes:
+      - ./scripts:/src/scripts:ro
+      - ./internal/storage/seed:/src/internal/storage/seed:ro
+    working_dir: /src
+    entrypoint: ["bash", "scripts/seed.sh"]
+    restart: "no"
+
   detector:
     build:
       context: .
