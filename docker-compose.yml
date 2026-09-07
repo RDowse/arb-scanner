@@ -78,5 +78,24 @@ services:
         condition: service_completed_successfully
     restart: unless-stopped
 
+  # Unit tests by default; override the command for tagged runs, e.g.
+  #   docker compose run --rm test go test -tags=db ./...
+  test:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: build
+    environment:
+      TEST_DATABASE_URL: postgres://arb:arb@postgres:5432/arb_test?sslmode=disable
+      GOFLAGS: -buildvcs=false
+    volumes:
+      - .:/src:z
+    working_dir: /src
+    depends_on:
+      postgres:
+        condition: service_healthy
+    profiles: ["test"]
+    command: ["go", "test", "./..."]
+
 volumes:
   pgdata:
