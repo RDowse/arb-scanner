@@ -2,7 +2,7 @@
 
 A backend service which looks for price mismatches across crypto exchanges and identifies profitable opportunities.
 
-Two exchanges are covered (Coinbase and Kraken) with a cross venue strategy to identify opportunities.
+Two exchanges are covered (Coinbase and Kraken) with a cross-venue strategy to identify opportunities.
 
 ## Quick start
 
@@ -53,7 +53,7 @@ docker compose down
 
 ## Assumptions
 
-Both venues are pre-funded and the avaialble capital is unbounded, transfers and their costs are out of scope.
+Both venues are pre-funded and the available capital is unbounded, transfers and their costs are out of scope.
 
 For taker fees, assume a $1M 30-day volume tier for both exchanges. These fees are assumed to be flat and the same across different symbols.
 Kraken (0.18%)
@@ -61,7 +61,7 @@ https://www.kraken.com/features/fee-schedule
 Coinbase (0.18%)
 https://exchange.coinbase.com/fees
 
-Latency is not modelled, assuming that all legs of a trading opportunity can be filled simutaneously at the current book price.
+Latency is not modelled, assuming that all legs of a trading opportunity can be filled simultaneously at the current book price.
 
 ## Architecture
 
@@ -80,10 +80,10 @@ flowchart LR
     API -->|"HTTP JSON"| C(["client"])
 ```
 
-The backend application is split into two processes: the detector which subscribes to the venue market data to build up the current state of the order book and indentify trading opportunities between the two exchanges, and the api-server which exposes the REST endpoints to query the identified opportunities.
+The backend application is split into two processes: the detector which subscribes to the venue market data to build up the current state of the order book and identify trading opportunities between the two exchanges, and the api-server which exposes the REST endpoints to query the identified opportunities.
 
 The read and write paths are separated into two apps rather than a single process to allow for isolation, scaling and availability. For example:
-- reader process can be scaled horizontally to accomodate read requests
+- reader process can be scaled horizontally to accommodate read requests
 - new strategies can be deployed independently
 - issues with the venue feed do not affect the read process
 
@@ -107,11 +107,9 @@ flowchart LR
 
 The detection process subscribes to multiple exchanges, via websockets, and maintains the L2 order book in memory. Multiple different symbols can be subscribed to for each exchange (e.g. "BTC/USD", "ETH/USD").
 
-The strategies are evaluated at a fixed interval against the current state of the order book to identify trading opportunities. Constraints are set for the max acceptable staleness of the order book, so a disconnected or stalled feed does not produces opportunities against stale prices. Candidate opportunities must clear a minimum net edge and quote size to prevent publishing negligible results.
+The strategies are evaluated at a fixed interval against the current state of the order book to identify trading opportunities. Constraints are set for the max acceptable staleness of the order book, so a disconnected or stalled feed does not produce opportunities against stale prices. Candidate opportunities must clear a minimum net edge and quote size to prevent publishing negligible results.
 
-In the case of the cross-venue strategy we look for trading opportunities where the asset can be bought on one exchange and sold on another for a profit, minus fees. Both exchanges' order books are walked in parallel consuming the quantities for the available asks (buy side) and bids (sell side) and stops when the fee adjusted bid is no longer greater than the fee adjusted ask.
-
-Constraints are set for the max acceptable staleness of the order book, so a disconnected or stalled feed does not produces opportunities against stale prices. Candidate opportunities must clear a minimum net edge and quote size to prevent publishing negligible results.
+In the case of the cross-venue strategy we look for trading opportunities where the asset can be bought on one exchange and sold on another for a profit, minus fees. Both exchanges' order books are walked in parallel consuming the quantities for the available asks (buy side) and bids (sell side) and stop when the fee adjusted bid is no longer greater than the fee adjusted ask.
 
 ## Data model
 
@@ -141,11 +139,11 @@ CREATE INDEX opportunities_strategy_last_seen_idx
 
 ## API
 
-Backend API servered by default on port 8080. Acts as a read-only service for querying opportunities.
+Backend API served by default on port 8080. Acts as a read-only service for querying opportunities.
 
 ### GET /opportunities
 
-The backend is pre-loaded with opportunitiy data for demo purposes. This can be queried with:
+The backend is pre-loaded with opportunity data for demo purposes. This can be queried with:
 /opportunities?from=2026-09-06T00:00:00Z&to=2026-09-07T00:00:00Z
 ```
 {
@@ -213,13 +211,11 @@ docker compose --profile test run --rm test
 
 Unit tests only: no network, no database. Tagged tests are excluded by default —
 `db` runs against the compose Postgres, dropping and recreating `arb_test`;
-`live` dials the real exchanges:
+`live` tests against the Kraken and Coinbase exchanges.
 
 ```bash
 docker compose --profile test run --rm test go test -tags=db ./...
 docker compose --profile test run --rm test go test -tags=live ./...
 ```
-
-`--profile test` keeps the service out of `docker compose up`.
 
 ## Trade-offs and what I would do next
