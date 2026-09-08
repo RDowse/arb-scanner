@@ -63,43 +63,6 @@ func (b *bookState) set(s side, price, size string) error {
 	return nil
 }
 
-// trim drops the levels outside the top depth. A depth-limited feed never sends
-// a delete for a level pushed out of its window, so without this those levels
-// linger and can resurface as best-of-book once the real top is consumed.
-func (b *bookState) trim(depth int) {
-	if depth <= 0 {
-		return
-	}
-	trimSide(b.bids, true, depth)
-	trimSide(b.asks, false, depth)
-}
-
-func trimSide(levels map[string]decimal.Decimal, descending bool, depth int) {
-	if len(levels) <= depth {
-		return
-	}
-
-	prices := make([]decimal.Decimal, 0, len(levels))
-	for price := range levels {
-		p, err := decimal.NewFromString(price)
-		if err != nil {
-			continue
-		}
-		prices = append(prices, p)
-	}
-
-	sort.Slice(prices, func(i, j int) bool {
-		if descending {
-			return prices[i].GreaterThan(prices[j])
-		}
-		return prices[i].LessThan(prices[j])
-	})
-
-	for _, p := range prices[depth:] {
-		delete(levels, p.String())
-	}
-}
-
 func (b *bookState) book(venue, symbol string, depth int) market.Book {
 	return market.Book{
 		Venue:     venue,

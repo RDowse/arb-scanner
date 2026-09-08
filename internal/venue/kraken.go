@@ -202,9 +202,7 @@ func (k *Kraken) handle(data []byte) error {
 	}
 }
 
-// applyBook replaces the book on a snapshot and edits it on an update, then
-// trims to the subscribed depth: Kraken never deletes a level that its own
-// window pushed out, so anything past the window is stale by definition.
+// applyBook replaces the book on a snapshot and edits it on an update.
 func (k *Kraken) applyBook(b krakenBook, snapshot bool) error {
 	k.mu.Lock()
 	defer k.mu.Unlock()
@@ -227,8 +225,6 @@ func (k *Kraken) applyBook(b krakenBook, snapshot bool) error {
 			return fmt.Errorf("book %s: %w", b.Symbol, err)
 		}
 	}
-	state.trim(k.feedDepth)
-
 	if err := k.verifyChecksum(state, b); err != nil {
 		return err
 	}
