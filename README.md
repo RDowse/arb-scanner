@@ -8,44 +8,26 @@ Two exchanges are covered (Coinbase and Kraken) with a cross-venue strategy to i
 
 ### Prerequisites
 
-Docker with Compose v2 (`docker compose`), or podman with `podman-compose` — see
-the podman note at the end of this section. Nothing else: the images build Go
-inside the build stage, and the migration and seed steps run `psql` from the
-same `postgres:16-alpine` image, so no local Go or Postgres client is needed.
-
 ### Run with Docker Compose
 
 ```bash
 docker compose up -d --build
 ```
 
-That starts Postgres, applies the migrations, loads four demonstration rows,
-and brings up the two long-running services: `detector`, which streams the
-Kraken and Coinbase websocket books and writes opportunities, and `api-server` on
-[localhost:8080](http://localhost:8080).
+The api-server runs on [localhost:8080](http://localhost:8080). On startup the database is pre-populated with four demonstration rows, these are not real detections. The detector service connects to Kraken and Coinbase websocket books and writes opportunities.
 
+Example requests:
 ```bash
 curl -s localhost:8080/health
 curl -s 'localhost:8080/opportunities?limit=5'
 ```
 
-**The rows you see first are seed data, not detections.** `seed` runs on every
-`up` and loads four fixed demo routes so the API has something to serve before
-a live opportunity appears; a real cross-venue edge on BTC/USD or ETH/USD is
-rare and may not occur while you watch. Detected rows are distinguishable by
-their recent `last_seen_at`. To start from an empty table:
-
-```bash
-./scripts/seed.sh --reset   # truncates, then reloads only the demo rows
-```
-
-Follow the detector to see evaluation happening regardless:
-
+To follow the detector logs which are by default set to debug mode for demonstration purposes:
 ```bash
 docker compose logs -f detector
 ```
 
-Tear down, keeping the database volume:
+Tear down:
 
 ```bash
 docker compose down
