@@ -7,8 +7,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// Postgres persists one row per sighting, so a dislocation seen on many ticks
-// is a series rather than a single row that moves.
 type Postgres struct {
 	pool *pgxpool.Pool
 }
