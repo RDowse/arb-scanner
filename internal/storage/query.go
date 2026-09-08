@@ -2,7 +2,6 @@ package storage
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
@@ -12,8 +11,6 @@ import (
 	"github.com/RDowse/arb-scanner/internal/opportunity"
 )
 
-var ErrNotFound = errors.New("opportunity not found")
-
 const (
 	defaultLimit = 100
 	maxLimit     = 1000
@@ -21,10 +18,10 @@ const (
 
 type Record struct {
 	ID          string            `json:"id"`
+	RouteID     string            `json:"route_id"`
 	Strategy    string            `json:"strategy"`
 	ConfigID    string            `json:"config_id"`
-	FirstSeenAt time.Time         `json:"first_seen_at"`
-	LastSeenAt  time.Time         `json:"last_seen_at"`
+	ObservedAt  time.Time         `json:"observed_at"`
 	StartAsset  string            `json:"start_asset"`
 	AmountIn    decimal.Decimal   `json:"amount_in"`
 	AmountOut   decimal.Decimal   `json:"amount_out"`
@@ -32,7 +29,6 @@ type Record struct {
 	Fees        decimal.Decimal   `json:"fees"`
 	NetProfit   decimal.Decimal   `json:"net_profit"`
 	NetEdgeBps  decimal.Decimal   `json:"net_edge_bps"`
-	MaxEdgeBps  decimal.Decimal   `json:"max_edge_bps"`
 	Legs        []opportunity.Leg `json:"legs"`
 }
 
@@ -55,18 +51,18 @@ func (f Filter) EffectiveLimit() int {
 }
 
 const selectColumns = `
-	id, strategy, config_id, first_seen_at, last_seen_at, start_asset,
-	amount_in, amount_out, gross_profit, fees, net_profit, net_edge_bps,
-	max_edge_bps, legs`
+	id, route_id, strategy, config_id, observed_at, start_asset,
+	amount_in, amount_out, gross_profit, fees, net_profit, net_edge_bps, legs`
 
-// List returns the most recently seen opportunities.
+// List returns sightings newest first. A route seen on successive ticks appears
+// once per tick, so the window filters select a history rather than a snapshot.
 func (p *Postgres) List(ctx context.Context, f Filter) ([]Record, error) {
 	rows, err := p.pool.Query(ctx, `SELECT`+selectColumns+`
 		FROM opportunities
 		WHERE ($1 = '' OR strategy = $1)
-		  AND ($2::timestamptz IS NULL OR last_seen_at >= $2)
-		  AND ($3::timestamptz IS NULL OR last_seen_at <= $3)
-		ORDER BY last_seen_at DESC, id
+		  AND ($2::timestamptz IS NULL OR observed_at >= $2)
+		  AND ($3::timestamptz IS NULL OR observed_at <= $3)
+		ORDER BY observed_at DESC, id
 		LIMIT $4`,
 		f.Strategy, nullTime(f.From), nullTime(f.To), f.EffectiveLimit())
 	if err != nil {
@@ -86,23 +82,6 @@ func (p *Postgres) List(ctx context.Context, f Filter) ([]Record, error) {
 		return nil, fmt.Errorf("list opportunities: %w", err)
 	}
 	return records, nil
-}
-
-// Get returns one opportunity by route id, or ErrNotFound.
-func (p *Postgres) Get(ctx context.Context, id string) (Record, error) {
-	rows, err := p.pool.Query(ctx, `SELECT`+selectColumns+` FROM opportunities WHERE id = $1`, id)
-	if err != nil {
-		return Record{}, fmt.Errorf("get opportunity %s: %w", id, err)
-	}
-	defer rows.Close()
-
-	if !rows.Next() {
-		if err := rows.Err(); err != nil {
-			return Record{}, fmt.Errorf("get opportunity %s: %w", id, err)
-		}
-		return Record{}, ErrNotFound
-	}
-	return scanRecord(rows)
 }
 
 // Strategies lists the strategies that have produced an opportunity.
@@ -130,9 +109,9 @@ func (p *Postgres) Strategies(ctx context.Context) ([]string, error) {
 func scanRecord(rows pgx.Rows) (Record, error) {
 	var r Record
 	err := rows.Scan(
-		&r.ID, &r.Strategy, &r.ConfigID, &r.FirstSeenAt, &r.LastSeenAt, &r.StartAsset,
+		&r.ID, &r.RouteID, &r.Strategy, &r.ConfigID, &r.ObservedAt, &r.StartAsset,
 		&r.AmountIn, &r.AmountOut, &r.GrossProfit, &r.Fees, &r.NetProfit, &r.NetEdgeBps,
-		&r.MaxEdgeBps, &r.Legs,
+		&r.Legs,
 	)
 	if err != nil {
 		return Record{}, fmt.Errorf("scan opportunity: %w", err)

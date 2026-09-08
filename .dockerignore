@@ -3,7 +3,6 @@
 .vscode
 *.md
 *.pdf
-config/
 Dockerfile
 docker-compose.yml
 scripts/

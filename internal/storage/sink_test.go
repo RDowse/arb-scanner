@@ -13,13 +13,10 @@ import (
 )
 
 type stored struct {
-	firstSeenAt time.Time
-	lastSeenAt  time.Time
-	netEdgeBps  decimal.Decimal
-	maxEdgeBps  decimal.Decimal
-	amountOut   decimal.Decimal
-	legs        string
-	count       int
+	routeID    string
+	observedAt time.Time
+	amountOut  decimal.Decimal
+	legs       string
 }
 
 func read(t *testing.T, db *Postgres, id string) stored {
@@ -27,14 +24,23 @@ func read(t *testing.T, db *Postgres, id string) stored {
 
 	var s stored
 	err := db.pool.QueryRow(context.Background(), `
-		SELECT first_seen_at, last_seen_at, net_edge_bps, max_edge_bps, amount_out, legs::text,
-		       (SELECT count(*) FROM opportunities)
+		SELECT route_id, observed_at, amount_out, legs::text
 		FROM opportunities WHERE id = $1`, id).
-		Scan(&s.firstSeenAt, &s.lastSeenAt, &s.netEdgeBps, &s.maxEdgeBps, &s.amountOut, &s.legs, &s.count)
+		Scan(&s.routeID, &s.observedAt, &s.amountOut, &s.legs)
 	if err != nil {
 		t.Fatalf("read %s: %v", id, err)
 	}
 	return s
+}
+
+func count(t *testing.T, db *Postgres, where string, args ...any) int {
+	t.Helper()
+
+	var n int
+	if err := db.pool.QueryRow(context.Background(), "SELECT count(*) FROM opportunities WHERE "+where, args...).Scan(&n); err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	return n
 }
 
 func TestPostgresStore(t *testing.T) {
@@ -48,91 +54,74 @@ func TestPostgresStore(t *testing.T) {
 		}
 	})
 
-	best := route(t, firstTick, "10100")
-	if err := db.Store(ctx, []opportunity.Opportunity{best}); err != nil {
+	wide := route(t, firstTick, "10100")
+	if err := db.Store(ctx, []opportunity.Opportunity{wide}); err != nil {
 		t.Fatalf("store: %v", err)
 	}
 
-	t.Run("inserts a new route", func(t *testing.T) {
-		got := read(t, db, best.ID)
-		if got.count != 1 {
-			t.Errorf("row count = %d, want 1", got.count)
+	t.Run("inserts a sighting", func(t *testing.T) {
+		if n := count(t, db, "true"); n != 1 {
+			t.Errorf("row count = %d, want 1", n)
 		}
-		if !got.firstSeenAt.Equal(firstTick) || !got.lastSeenAt.Equal(firstTick) {
-			t.Errorf("seen at %s..%s, want both %s", got.firstSeenAt, got.lastSeenAt, firstTick)
+
+		got := read(t, db, wide.ID)
+		if got.routeID != wide.RouteID {
+			t.Errorf("route id = %s, want %s", got.routeID, wide.RouteID)
 		}
-		if !got.maxEdgeBps.Equal(got.netEdgeBps) {
-			t.Errorf("max edge %s, want the inserted %s", got.maxEdgeBps, got.netEdgeBps)
+		if !got.observedAt.Equal(firstTick) {
+			t.Errorf("observed at %s, want %s", got.observedAt, firstTick)
 		}
 		if !got.amountOut.Equal(dec("10100")) {
 			t.Errorf("amount out = %s, want 10100", got.amountOut)
-		}
-	})
-
-	t.Run("keeps the best observation when the edge narrows", func(t *testing.T) {
-		secondTick := firstTick.Add(time.Second)
-		worse := route(t, secondTick, "10050")
-		if worse.ID != best.ID {
-			t.Fatalf("route id changed with the price: %s then %s", best.ID, worse.ID)
-		}
-		if err := db.Store(ctx, []opportunity.Opportunity{worse}); err != nil {
-			t.Fatalf("store: %v", err)
-		}
-
-		got := read(t, db, best.ID)
-		if got.count != 1 {
-			t.Errorf("row count = %d, want 1: the same route must not open a second row", got.count)
-		}
-		if !got.firstSeenAt.Equal(firstTick) {
-			t.Errorf("first seen at %s, want the original %s", got.firstSeenAt, firstTick)
-		}
-		if !got.lastSeenAt.Equal(secondTick) {
-			t.Errorf("last seen at %s, want %s", got.lastSeenAt, secondTick)
-		}
-		if !got.amountOut.Equal(dec("10100")) {
-			t.Errorf("amount out = %s, want the better 10100 retained", got.amountOut)
-		}
-		if !got.maxEdgeBps.Equal(best.NetEdgeBps) {
-			t.Errorf("max edge = %s, want the better %s retained", got.maxEdgeBps, best.NetEdgeBps)
-		}
-	})
-
-	t.Run("replaces the observation when the edge widens", func(t *testing.T) {
-		thirdTick := firstTick.Add(2 * time.Second)
-		better := route(t, thirdTick, "10200")
-		if err := db.Store(ctx, []opportunity.Opportunity{better}); err != nil {
-			t.Fatalf("store: %v", err)
-		}
-
-		got := read(t, db, best.ID)
-		if got.count != 1 {
-			t.Errorf("row count = %d, want 1", got.count)
-		}
-		if !got.lastSeenAt.Equal(thirdTick) {
-			t.Errorf("last seen at %s, want %s", got.lastSeenAt, thirdTick)
-		}
-		if !got.amountOut.Equal(dec("10200")) {
-			t.Errorf("amount out = %s, want the new 10200", got.amountOut)
-		}
-		if !got.maxEdgeBps.Equal(better.NetEdgeBps) {
-			t.Errorf("max edge = %s, want %s", got.maxEdgeBps, better.NetEdgeBps)
 		}
 		if got.legs == "" {
 			t.Error("legs are empty")
 		}
 	})
 
+	t.Run("adds a row when the same route is seen again", func(t *testing.T) {
+		secondTick := firstTick.Add(time.Second)
+		narrow := route(t, secondTick, "10050")
+		if narrow.RouteID != wide.RouteID {
+			t.Fatalf("route id changed with the price: %s then %s", wide.RouteID, narrow.RouteID)
+		}
+		if narrow.ID == wide.ID {
+			t.Fatalf("two sightings share a sighting id: %s", narrow.ID)
+		}
+		if err := db.Store(ctx, []opportunity.Opportunity{narrow}); err != nil {
+			t.Fatalf("store: %v", err)
+		}
+
+		if n := count(t, db, "route_id = $1", wide.RouteID); n != 2 {
+			t.Errorf("route rows = %d, want 2: a later sighting must not replace the earlier one", n)
+		}
+		if got := read(t, db, wide.ID); !got.amountOut.Equal(dec("10100")) {
+			t.Errorf("earlier amount out = %s, want the original 10100 untouched", got.amountOut)
+		}
+		if got := read(t, db, narrow.ID); !got.amountOut.Equal(dec("10050")) {
+			t.Errorf("later amount out = %s, want 10050", got.amountOut)
+		}
+	})
+
+	t.Run("re-storing a tick changes nothing", func(t *testing.T) {
+		before := count(t, db, "true")
+		if err := db.Store(ctx, []opportunity.Opportunity{wide}); err != nil {
+			t.Fatalf("store: %v", err)
+		}
+		if after := count(t, db, "true"); after != before {
+			t.Errorf("row count = %d, want the unchanged %d", after, before)
+		}
+	})
+
 	t.Run("stores a batch of routes atomically", func(t *testing.T) {
 		fourthTick := firstTick.Add(3 * time.Second)
-		other := route(t, fourthTick, "10300")
-		other.Legs[1].Venue = "binance"
-		other.ID = other.RouteID()
+		other := routeFor(t, "cross_venue", "binance", "10300", fourthTick)
 
 		if err := db.Store(ctx, []opportunity.Opportunity{route(t, fourthTick, "10250"), other}); err != nil {
 			t.Fatalf("store: %v", err)
 		}
-		if got := read(t, db, other.ID); got.count != 2 {
-			t.Errorf("row count = %d, want 2", got.count)
+		if n := count(t, db, "observed_at = $1", fourthTick); n != 2 {
+			t.Errorf("rows for the tick = %d, want 2", n)
 		}
 	})
 }

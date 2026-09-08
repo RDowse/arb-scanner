@@ -17,7 +17,6 @@ import (
 // *storage.Postgres.
 type Store interface {
 	List(ctx context.Context, f storage.Filter) ([]storage.Record, error)
-	Get(ctx context.Context, id string) (storage.Record, error)
 	Strategies(ctx context.Context) ([]string, error)
 }
 
@@ -46,7 +45,6 @@ func New(store Store, log *slog.Logger) *Server {
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /opportunities", s.listOpportunities)
-	mux.HandleFunc("GET /opportunities/{id}", s.getOpportunity)
 	mux.HandleFunc("GET /strategies", s.listStrategies)
 	mux.HandleFunc("GET /health", s.health)
 	return s.logRequests(mux)
@@ -70,20 +68,6 @@ func (s *Server) listOpportunities(w http.ResponseWriter, r *http.Request) {
 		Count:         len(records),
 		Limit:         filter.EffectiveLimit(),
 	})
-}
-
-func (s *Server) getOpportunity(w http.ResponseWriter, r *http.Request) {
-	record, err := s.store.Get(r.Context(), r.PathValue("id"))
-	switch {
-	case errors.Is(err, storage.ErrNotFound):
-		writeError(w, http.StatusNotFound, "no such opportunity")
-		return
-	case err != nil:
-		s.log.Error("get opportunity", "id", r.PathValue("id"), "err", err)
-		writeError(w, http.StatusInternalServerError, "could not read opportunity")
-		return
-	}
-	writeJSON(w, http.StatusOK, record)
 }
 
 func (s *Server) listStrategies(w http.ResponseWriter, r *http.Request) {

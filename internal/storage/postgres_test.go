@@ -105,7 +105,15 @@ func dec(s string) decimal.Decimal {
 	return d
 }
 
+// route builds a valid two-leg cross-venue route, priced so amountOut decides
+// the edge.
 func route(t *testing.T, observedAt time.Time, amountOut string) opportunity.Opportunity {
+	return routeFor(t, "cross_venue", "coinbase", amountOut, observedAt)
+}
+
+// routeFor varies the parts the route id hashes, so a test can build a route
+// that differs in identity rather than only in price.
+func routeFor(t *testing.T, strategy, sellVenue, amountOut string, observedAt time.Time) opportunity.Opportunity {
 	t.Helper()
 
 	legs := []opportunity.Leg{
@@ -115,13 +123,13 @@ func route(t *testing.T, observedAt time.Time, amountOut string) opportunity.Opp
 			AmountIn: dec("10000"), AmountOut: dec("0.2"), Price: dec("50000"), Qty: dec("0.2"),
 		},
 		{
-			Venue: "coinbase", Symbol: "BTC/USD", Side: opportunity.Sell,
+			Venue: sellVenue, Symbol: "BTC/USD", Side: opportunity.Sell,
 			Base: "BTC", Quote: "USD", AssetIn: "BTC", AssetOut: "USD",
 			AmountIn: dec("0.2"), AmountOut: dec(amountOut), Price: dec("50500"), Qty: dec("0.2"),
 		},
 	}
 
-	o, err := opportunity.New("cross_venue", "v1", observedAt, dec("10000"), dec(amountOut), dec("66"), legs)
+	o, err := opportunity.New(strategy, "v1", observedAt, dec("10000"), dec(amountOut), dec("66"), legs)
 	if err != nil {
 		t.Fatalf("build opportunity: %v", err)
 	}

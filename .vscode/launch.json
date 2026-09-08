@@ -12,7 +12,6 @@
             "program": "${workspaceFolder}/cmd/detector",
             "env": {
                 "DATABASE_URL": "postgres://arb:arb@localhost:5432/arb?sslmode=disable",
-                "ARB_CONFIG": "${workspaceFolder}/config/strategies.yaml",
                 "LOG_LEVEL": "debug"
             }
         },

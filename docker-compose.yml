@@ -51,13 +51,10 @@ services:
     image: arb-scanner-detector:local
     environment:
       DATABASE_URL: postgres://arb:arb@postgres:5432/arb?sslmode=disable
-      ARB_CONFIG: /etc/arb-scanner/strategies.yaml
       LOG_LEVEL: debug
-    volumes:
-      - ./config:/etc/arb-scanner:ro
     depends_on:
-      migrate:
-        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
     restart: unless-stopped
 
   api-server:
@@ -74,8 +71,8 @@ services:
     ports:
       - "8080:8080"
     depends_on:
-      migrate:
-        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
     restart: unless-stopped
 
   # Unit tests by default; override the command for tagged runs, e.g.

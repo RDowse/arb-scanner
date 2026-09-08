@@ -9,14 +9,18 @@ import (
 func TestDetectorFromEnv(t *testing.T) {
 	t.Run("applies defaults", func(t *testing.T) {
 		t.Setenv("DATABASE_URL", "postgres://localhost/arb")
-		t.Setenv("ARB_CONFIG", "")
+		t.Setenv("EVAL_INTERVAL", "")
+		t.Setenv("MAX_BOOK_AGE", "")
 
 		got, err := DetectorFromEnv()
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if got.StrategyPath != "/etc/arb-scanner/strategies.yaml" {
-			t.Errorf("StrategyPath = %q", got.StrategyPath)
+		if got.EvalInterval != time.Second {
+			t.Errorf("EvalInterval = %s, want 1s", got.EvalInterval)
+		}
+		if got.MaxBookAge != 5*time.Second {
+			t.Errorf("MaxBookAge = %s, want 5s", got.MaxBookAge)
 		}
 	})
 

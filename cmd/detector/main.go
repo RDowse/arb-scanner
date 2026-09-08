@@ -18,15 +18,13 @@ import (
 	"github.com/RDowse/arb-scanner/internal/venue"
 )
 
-// Mirrors config/strategies.yaml, which is not yet loaded: taker fees at each
-// venue's lowest 30-day volume tier, and the thresholds an opportunity must
-// clear to be worth recording.
+// Taker fees at each venue's 1M 30-day volume tier.
 const (
 	configID = "v1"
 
 	bookDepth    = 10
-	krakenFee    = "0.0026"
-	coinbaseFee  = "0.0040"
+	krakenFee    = "0.0018"
+	coinbaseFee  = "0.0018"
 	minEdgeBps   = "5"
 	minSizeQuote = "100"
 )

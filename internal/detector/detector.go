@@ -46,7 +46,6 @@ func (d *Detector) Run(ctx context.Context) error {
 			if err := feed.Run(ctx); err != nil && ctx.Err() == nil {
 				d.log.Error("feed stopped", "venue", feed.Name(), "err", err)
 			}
-			// TODO handle feed restart
 		}()
 	}
 

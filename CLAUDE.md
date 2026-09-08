@@ -34,15 +34,15 @@ Interfaces are declared at their consumer, never beside the implementation: `api
 
 **Decimal everywhere.** No float in the profit path — exchange inputs are decimal strings and stored rows must be re-derivable exactly. pgx needs no decimal adapter: `decimal.Decimal` satisfies `driver.Valuer`/`sql.Scanner`, so `NUMERIC` round-trips.
 
-**The route id hashes the route, not the prices.** One row per route: `last_seen_at` advances on every sighting, `max_edge_bps` keeps the best, and the legs are replaced only when a sighting beats it — so the stored trade sequence is the best seen, not the latest.
+**The store is append-only: one row per sighting, not per route.** Every tick a route still pays is a plain insert, so an edge's persistence and decay survive. `route_id` hashes the route (strategy, start asset, each leg's venue/symbol/side) and is stable across ticks; `id` hashes the route plus the tick, so re-storing a tick is a no-op rather than a duplicate. A route's history is the rows sharing a `route_id`.
 
 **Venue protocols differ and the code reflects it.** Coinbase publishes full depth, so removals are explicit. Kraken publishes a depth-limited book and never deletes a level its own window pushed out, so `bookState.trim` is mandatory or stale levels resurface as best-of-book; its CRC32 checksum is the only gap detection, and reproducing it needs decimal precision from the `instrument` channel because the book channel sends `50000.10` as `50000.1`. Prices decode as `json.Number` to keep the literal. Any disconnect invalidates that venue's books — a resumed stream cannot be told from a gapped one.
 
-**API shape.** Collections are enveloped (`{"opportunities": [...], "count", "limit"}`) so a cursor can be added later; a single record is bare. `limit` reports the value actually applied after clamping. Malformed query params are 400, `storage.ErrNotFound` is 404, store errors are logged in full and answered generically.
+**API shape.** Collections are enveloped (`{"opportunities": [...], "count", "limit"}`) so a cursor can be added later. `limit` reports the value actually applied after clamping. Malformed query params are 400, store errors are logged in full and answered generically.
 
-**Compose has no ordering guarantee under podman.** podman-compose ignores `depends_on` conditions and turns them into `--requires`, which demands the dependency be *running* — so a one-shot `migrate` that has exited breaks single-container restarts (`podman restart api-server` fails with "container state improper"). Workaround is a full `podman-compose down && up`. Docker Compose honours the conditions correctly.
+**Compose orders on postgres, not migrate, because of podman.** podman-compose ignores `depends_on` conditions and turns them into `--requires`. podman drops already-running containers from a start's input list, so an edge *through* the exited one-shot `migrate` can never resolve once postgres is up — `podman-compose up` itself fails, not just single-container restarts, and no `down && up` recovers it. So `detector` and `api-server` depend on `postgres: service_healthy` instead. Both only ping on open, so a cold start where migrate has not finished costs a few seconds of errors rather than a failure. Docker Compose would honour `service_completed_successfully` correctly; restoring it there means giving the services their own wait-for-schema.
 
-**Seeded rows are not detections.** `seed` loads four demo routes on every `up`; the README must say so.
+**Seeded rows are not detections.** `seed` loads four demo routes on every `up`, one sighting each. Ids are deterministic, so re-running it changes nothing. The README must say the rows are demo data.
 
 ## Code style
 

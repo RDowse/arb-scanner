@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -42,10 +43,13 @@ type Leg struct {
 	BookAt         time.Time       `json:"book_at"`
 }
 
-// Opportunity is an ordered route back to its starting asset. Legs are executed
-// in slice order; every derived amount is quoted in StartAsset.
+// Opportunity is one sighting of an ordered route back to its starting asset.
+// Legs are executed in slice order; every derived amount is quoted in
+// StartAsset. ID identifies the sighting, RouteID the route it is a sighting
+// of, so a route's history is the rows sharing a RouteID.
 type Opportunity struct {
 	ID          string          `json:"id"`
+	RouteID     string          `json:"route_id"`
 	Strategy    string          `json:"strategy"`
 	ConfigID    string          `json:"config_id"`
 	ObservedAt  time.Time       `json:"observed_at"`
@@ -80,19 +84,29 @@ func New(strategy, configID string, observedAt time.Time, amountIn, amountOut, f
 		NetEdgeBps:  netProfit.Div(amountIn).Mul(bps),
 		Legs:        legs,
 	}
-	o.ID = o.RouteID()
+	o.RouteID = routeID(strategy, configID, o.StartAsset, legs)
+	o.ID = sightingID(o.RouteID, observedAt)
 	return o, nil
 }
 
-// RouteID hashes the route rather than the observation, so the same dislocation
-// seen on later ticks maps back to one row.
-func (o Opportunity) RouteID() string {
-	parts := make([]string, 0, len(o.Legs)+3)
-	parts = append(parts, o.Strategy, o.ConfigID, o.StartAsset)
-	for _, leg := range o.Legs {
+// routeID hashes the route rather than the observation, so every sighting of
+// the same dislocation shares it and the series reads back as one history.
+func routeID(strategy, configID, startAsset string, legs []Leg) string {
+	parts := make([]string, 0, len(legs)+3)
+	parts = append(parts, strategy, configID, startAsset)
+	for _, leg := range legs {
 		parts = append(parts, fmt.Sprintf("%s|%s|%s", leg.Venue, leg.Symbol, leg.Side))
 	}
+	return digest(parts...)
+}
 
+// sightingID is derived rather than assigned by the database so re-storing a
+// tick is a no-op instead of a duplicate row.
+func sightingID(routeID string, observedAt time.Time) string {
+	return digest(routeID, strconv.FormatInt(observedAt.UTC().UnixNano(), 10))
+}
+
+func digest(parts ...string) string {
 	sum := sha256.Sum256([]byte(strings.Join(parts, "\x00")))
 	return hex.EncodeToString(sum[:16])
 }

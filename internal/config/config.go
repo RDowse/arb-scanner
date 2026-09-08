@@ -8,8 +8,7 @@ import (
 )
 
 type Detector struct {
-	DatabaseURL  string
-	StrategyPath string
+	DatabaseURL string
 
 	// EvalInterval is how often books are evaluated; MaxBookAge is how old a
 	// book may be and still be priced against.
@@ -24,10 +23,7 @@ type API struct {
 }
 
 func DetectorFromEnv() (Detector, error) {
-	c := Detector{
-		DatabaseURL:  os.Getenv("DATABASE_URL"),
-		StrategyPath: envOr("ARB_CONFIG", "/etc/arb-scanner/strategies.yaml"),
-	}
+	c := Detector{DatabaseURL: os.Getenv("DATABASE_URL")}
 
 	var errs []error
 	if c.DatabaseURL == "" {

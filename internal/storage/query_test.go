@@ -4,28 +4,22 @@ package storage
 
 import (
 	"context"
-	"errors"
 	"testing"
 	"time"
 
 	"github.com/RDowse/arb-scanner/internal/opportunity"
 )
 
-// seed stores three routes across two strategies, each seen at a different
-// time, so ordering and filtering have something to separate.
+// seed stores three sightings across two strategies, each observed at a
+// different time, so ordering and filtering have something to separate.
 func seed(t *testing.T, db *Postgres) (crossEarly, crossLate, triangular opportunity.Opportunity) {
 	t.Helper()
 
 	base := time.Date(2026, 9, 6, 12, 0, 0, 0, time.UTC)
 
 	crossEarly = route(t, base, "10100")
-	crossLate = route(t, base.Add(2*time.Minute), "10200")
-	crossLate.Legs[1].Venue = "binance"
-	crossLate.ID = crossLate.RouteID()
-
-	triangular = route(t, base.Add(time.Minute), "10150")
-	triangular.Strategy = "triangular"
-	triangular.ID = triangular.RouteID()
+	crossLate = routeFor(t, "cross_venue", "binance", "10200", base.Add(2*time.Minute))
+	triangular = routeFor(t, "triangular", "coinbase", "10150", base.Add(time.Minute))
 
 	if err := db.Store(context.Background(), []opportunity.Opportunity{crossEarly, crossLate, triangular}); err != nil {
 		t.Fatalf("seed: %v", err)
@@ -46,7 +40,7 @@ func TestPostgresList(t *testing.T) {
 	ctx := context.Background()
 	crossEarly, crossLate, triangular := seed(t, db)
 
-	t.Run("returns the most recently seen first", func(t *testing.T) {
+	t.Run("returns the most recently observed first", func(t *testing.T) {
 		got, err := db.List(ctx, Filter{})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -81,7 +75,7 @@ func TestPostgresList(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		if len(got) != 1 || got[0].ID != triangular.ID {
-			t.Fatalf("got %v, want just the route seen inside the window", ids(got))
+			t.Fatalf("got %v, want just the sighting inside the window", ids(got))
 		}
 	})
 
@@ -105,7 +99,7 @@ func TestPostgresList(t *testing.T) {
 		}
 	})
 
-	t.Run("carries the sighting window and best edge", func(t *testing.T) {
+	t.Run("carries the observation and its legs", func(t *testing.T) {
 		got, err := db.List(ctx, Filter{Strategy: "cross_venue", Limit: 1})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -115,11 +109,14 @@ func TestPostgresList(t *testing.T) {
 		}
 
 		r := got[0]
-		if !r.FirstSeenAt.Equal(crossLate.ObservedAt) || !r.LastSeenAt.Equal(crossLate.ObservedAt) {
-			t.Errorf("seen at %s..%s, want both %s", r.FirstSeenAt, r.LastSeenAt, crossLate.ObservedAt)
+		if !r.ObservedAt.Equal(crossLate.ObservedAt) {
+			t.Errorf("observed at %s, want %s", r.ObservedAt, crossLate.ObservedAt)
 		}
-		if !r.MaxEdgeBps.Equal(crossLate.NetEdgeBps) {
-			t.Errorf("max edge = %s, want %s", r.MaxEdgeBps, crossLate.NetEdgeBps)
+		if r.RouteID != crossLate.RouteID {
+			t.Errorf("route id = %s, want %s", r.RouteID, crossLate.RouteID)
+		}
+		if !r.NetEdgeBps.Equal(crossLate.NetEdgeBps) {
+			t.Errorf("net edge = %s, want %s", r.NetEdgeBps, crossLate.NetEdgeBps)
 		}
 		if len(r.Legs) != 2 {
 			t.Fatalf("got %d legs, want 2", len(r.Legs))
@@ -131,6 +128,45 @@ func TestPostgresList(t *testing.T) {
 			t.Errorf("leg 0 price = %s, want 50000: jsonb decimals must survive the round trip", r.Legs[0].Price)
 		}
 	})
+}
+
+// A route seen on successive ticks is a series, not a single row that moves.
+func TestPostgresListRouteHistory(t *testing.T) {
+	db := open(t)
+	ctx := context.Background()
+	base := time.Date(2026, 9, 6, 12, 0, 0, 0, time.UTC)
+
+	var want []string
+	var opps []opportunity.Opportunity
+	for i, amountOut := range []string{"10200", "10150", "10100"} {
+		o := route(t, base.Add(time.Duration(i)*time.Second), amountOut)
+		opps = append(opps, o)
+		want = append(want, o.ID)
+	}
+	if err := db.Store(ctx, opps); err != nil {
+		t.Fatalf("store: %v", err)
+	}
+
+	got, err := db.List(ctx, Filter{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != len(want) {
+		t.Fatalf("got %d sightings, want %d: every tick a route pays is its own row", len(got), len(want))
+	}
+
+	// Newest first, so the decaying edge reads back in reverse.
+	for i, id := range []string{want[2], want[1], want[0]} {
+		if got[i].ID != id {
+			t.Fatalf("order = %v, want newest first", ids(got))
+		}
+		if got[i].RouteID != opps[0].RouteID {
+			t.Errorf("route id = %s, want every sighting to share %s", got[i].RouteID, opps[0].RouteID)
+		}
+	}
+	if !got[0].NetEdgeBps.LessThan(got[2].NetEdgeBps) {
+		t.Errorf("newest edge %s is not below the oldest %s", got[0].NetEdgeBps, got[2].NetEdgeBps)
+	}
 }
 
 func TestFilterEffectiveLimit(t *testing.T) {
@@ -151,32 +187,6 @@ func TestFilterEffectiveLimit(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestPostgresGet(t *testing.T) {
-	db := open(t)
-	ctx := context.Background()
-	_, crossLate, _ := seed(t, db)
-
-	t.Run("returns the route by id", func(t *testing.T) {
-		got, err := db.Get(ctx, crossLate.ID)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if got.ID != crossLate.ID {
-			t.Errorf("id = %s, want %s", got.ID, crossLate.ID)
-		}
-		if !got.NetProfit.Equal(crossLate.NetProfit) {
-			t.Errorf("net profit = %s, want %s", got.NetProfit, crossLate.NetProfit)
-		}
-	})
-
-	t.Run("reports a missing id", func(t *testing.T) {
-		_, err := db.Get(ctx, "0000000000000000")
-		if !errors.Is(err, ErrNotFound) {
-			t.Fatalf("error = %v, want ErrNotFound", err)
-		}
-	})
 }
 
 func TestPostgresStrategies(t *testing.T) {

@@ -25,23 +25,11 @@ type stubStore struct {
 	err        error
 
 	gotFilter storage.Filter
-	gotID     string
 }
 
 func (s *stubStore) List(_ context.Context, f storage.Filter) ([]storage.Record, error) {
 	s.gotFilter = f
 	return s.records, s.err
-}
-
-func (s *stubStore) Get(_ context.Context, id string) (storage.Record, error) {
-	s.gotID = id
-	if s.err != nil {
-		return storage.Record{}, s.err
-	}
-	if len(s.records) == 0 {
-		return storage.Record{}, storage.ErrNotFound
-	}
-	return s.records[0], nil
 }
 
 func (s *stubStore) Strategies(context.Context) ([]string, error) {
@@ -51,18 +39,17 @@ func (s *stubStore) Strategies(context.Context) ([]string, error) {
 func record(id string) storage.Record {
 	seen := time.Date(2026, 9, 6, 12, 0, 0, 0, time.UTC)
 	return storage.Record{
-		ID:          id,
-		Strategy:    "cross_venue",
-		ConfigID:    "v1",
-		FirstSeenAt: seen,
-		LastSeenAt:  seen.Add(time.Minute),
-		StartAsset:  "USD",
-		AmountIn:    decimal.NewFromInt(10000),
-		AmountOut:   decimal.NewFromInt(10100),
-		NetProfit:   decimal.NewFromInt(100),
-		NetEdgeBps:  decimal.NewFromInt(100),
-		MaxEdgeBps:  decimal.NewFromInt(120),
-		Legs:        []opportunity.Leg{{Venue: "kraken", Side: opportunity.Buy}},
+		ID:         id,
+		RouteID:    "route-" + id,
+		Strategy:   "cross_venue",
+		ConfigID:   "v1",
+		ObservedAt: seen,
+		StartAsset: "USD",
+		AmountIn:   decimal.NewFromInt(10000),
+		AmountOut:  decimal.NewFromInt(10100),
+		NetProfit:  decimal.NewFromInt(100),
+		NetEdgeBps: decimal.NewFromInt(120),
+		Legs:       []opportunity.Leg{{Venue: "kraken", Side: opportunity.Buy}},
 	}
 }
 
@@ -105,8 +92,8 @@ func TestListOpportunities(t *testing.T) {
 		if got.Limit != 100 {
 			t.Errorf("limit = %d, want the default 100", got.Limit)
 		}
-		if !got.Opportunities[0].MaxEdgeBps.Equal(decimal.NewFromInt(120)) {
-			t.Errorf("max edge = %s, want 120: decimals must survive the round trip", got.Opportunities[0].MaxEdgeBps)
+		if !got.Opportunities[0].NetEdgeBps.Equal(decimal.NewFromInt(120)) {
+			t.Errorf("net edge = %s, want 120: decimals must survive the round trip", got.Opportunities[0].NetEdgeBps)
 		}
 	})
 
@@ -180,31 +167,6 @@ func TestListOpportunities(t *testing.T) {
 		}
 		if body := w.Body.String(); body == "" || strings.Contains(body, "db-prod-1") {
 			t.Errorf("body = %q, want a generic message", body)
-		}
-	})
-}
-
-func TestGetOpportunity(t *testing.T) {
-	t.Run("returns one record by id", func(t *testing.T) {
-		store := &stubStore{records: []storage.Record{record("abc")}}
-
-		w := serve(store, "/opportunities/abc")
-		if w.Code != http.StatusOK {
-			t.Fatalf("status = %d, want 200: %s", w.Code, w.Body)
-		}
-		if store.gotID != "abc" {
-			t.Errorf("looked up %q, want abc", store.gotID)
-		}
-		if got := decodeBody[storage.Record](t, w); got.ID != "abc" {
-			t.Errorf("id = %q, want abc", got.ID)
-		}
-	})
-
-	t.Run("returns 404 for an unknown id", func(t *testing.T) {
-		w := serve(&stubStore{}, "/opportunities/missing")
-
-		if w.Code != http.StatusNotFound {
-			t.Fatalf("status = %d, want 404: %s", w.Code, w.Body)
 		}
 	})
 }

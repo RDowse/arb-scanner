@@ -15,8 +15,8 @@ type Strategy interface {
 	Generate(books []market.Book) ([]opportunity.Opportunity, error)
 }
 
-// Rank orders by widest net edge, with profit and id breaking ties so equal
-// edges stay stable across ticks.
+// Rank orders by widest net edge, with profit and route id breaking ties so
+// equal edges stay stable across ticks.
 func Rank(opps []opportunity.Opportunity) {
 	sort.SliceStable(opps, func(i, j int) bool {
 		a, b := opps[i], opps[j]
@@ -26,6 +26,6 @@ func Rank(opps []opportunity.Opportunity) {
 		if !a.NetProfit.Equal(b.NetProfit) {
 			return a.NetProfit.GreaterThan(b.NetProfit)
 		}
-		return a.ID < b.ID
+		return a.RouteID < b.RouteID
 	})
 }

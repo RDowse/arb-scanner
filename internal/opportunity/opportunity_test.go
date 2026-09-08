@@ -51,6 +51,9 @@ func TestNew(t *testing.T) {
 		if want := dec("100"); !got.NetEdgeBps.Equal(want) {
 			t.Errorf("NetEdgeBps = %s, want %s", got.NetEdgeBps, want)
 		}
+		if got.RouteID == "" {
+			t.Error("RouteID is empty")
+		}
 		if got.ID == "" {
 			t.Error("ID is empty")
 		}
@@ -100,8 +103,11 @@ func TestRouteID(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if later.ID != first.ID {
-			t.Errorf("ID = %q, want %q for the same route", later.ID, first.ID)
+		if later.RouteID != first.RouteID {
+			t.Errorf("RouteID = %q, want %q for the same route", later.RouteID, first.RouteID)
+		}
+		if later.ID == first.ID {
+			t.Error("two sightings of one route share a sighting id")
 		}
 	})
 
@@ -113,8 +119,8 @@ func TestRouteID(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if reversed.ID == first.ID {
-			t.Error("routes buying and selling on swapped venues share an ID")
+		if reversed.RouteID == first.RouteID {
+			t.Error("routes buying and selling on swapped venues share a RouteID")
 		}
 	})
 }

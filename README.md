@@ -6,8 +6,6 @@ Two exchanges are covered (Coinbase and Kraken) with a cross-venue strategy to i
 
 ## Quick start
 
-### Prerequisites
-
 ### Run with Docker Compose
 
 ```bash
@@ -31,6 +29,21 @@ Tear down:
 
 ```bash
 docker compose down
+```
+
+### Running the tests
+
+```bash
+docker compose --profile test run --rm test
+```
+
+Unit tests only: no network, no database. Tagged tests are excluded by default —
+`db` runs against the compose Postgres, dropping and recreating `arb_test`;
+`live` tests against the Kraken and Coinbase exchanges.
+
+```bash
+docker compose --profile test run --rm test go test -tags=db ./...
+docker compose --profile test run --rm test go test -tags=live ./...
 ```
 
 ## Assumptions
@@ -93,31 +106,63 @@ The strategies are evaluated at a fixed interval against the current state of th
 
 In the case of the cross-venue strategy we look for trading opportunities where the asset can be bought on one exchange and sold on another for a profit, minus fees. Both exchanges' order books are walked in parallel consuming the quantities for the available asks (buy side) and bids (sell side) and stop when the fee adjusted bid is no longer greater than the fee adjusted ask.
 
+## Market Data Handling
+
+We subscribe to market data from two venues, Kraken and Coinbase. This is done using the L2 order book which covers the pending buys and sells at specific price levels. This was chosen because L1 only shows the top of the book and would not reflect the full size of the trading opportunity. L3 is too granular showing individual orders which we do not care about, we only require the total quantity available at a price level.
+
+### Error handling
+Feed connections invalidate the current order book state if the feed is dropped. There is an exponential backoff for retrying the feed connection. This can be found in the [feed.go] file.
+
+The session is restarted if malformed messages are read, because an unprocessed delta message could lead to an incomplete order book state.
+
+The order book is checked for staleness before evaluating. We do not produce opportunities on top of a stale book. Stalled feeds where no reads occur for 15s trigger an automatic reconnect.
+
+For Kraken there is a CRC32 checksum to check the order book validity, which checks against the top ten price levels, this is done with every update. For Coinbase the documentation states that the level2 order book is guaranteed delivery for all updates.
+
+Not covered. A single feed going down does not terminate the detector process, it just excludes that exchange's books from future evaluations. We would need a healthcheck endpoint that can be monitored for any feeds which fail to reconnect.
+
 ## Data model
 
 ### Schema
 
 ```
 CREATE TABLE opportunities (
-    id            TEXT PRIMARY KEY,
-    strategy      TEXT        NOT NULL,
-    config_id     TEXT        NOT NULL,
-    first_seen_at TIMESTAMPTZ NOT NULL,
-    last_seen_at  TIMESTAMPTZ NOT NULL,
-    start_asset   TEXT        NOT NULL,
-    amount_in     NUMERIC     NOT NULL,
-    amount_out    NUMERIC     NOT NULL,
-    gross_profit  NUMERIC     NOT NULL,
-    fees          NUMERIC     NOT NULL,
-    net_profit    NUMERIC     NOT NULL,
-    net_edge_bps  NUMERIC     NOT NULL,
-    max_edge_bps  NUMERIC     NOT NULL,
-    legs          JSONB       NOT NULL
+    id           TEXT PRIMARY KEY,
+    route_id     TEXT        NOT NULL,
+    strategy     TEXT        NOT NULL,
+    config_id    TEXT        NOT NULL,
+    observed_at  TIMESTAMPTZ NOT NULL,
+    start_asset  TEXT        NOT NULL,
+    amount_in    NUMERIC     NOT NULL,
+    amount_out   NUMERIC     NOT NULL,
+    gross_profit NUMERIC     NOT NULL,
+    fees         NUMERIC     NOT NULL,
+    net_profit   NUMERIC     NOT NULL,
+    net_edge_bps NUMERIC     NOT NULL,
+    legs         JSONB       NOT NULL
 );
 
-CREATE INDEX opportunities_strategy_last_seen_idx
-    ON opportunities (strategy, last_seen_at DESC);
+CREATE INDEX opportunities_strategy_observed_idx
+    ON opportunities (strategy, observed_at DESC);
+
+CREATE INDEX opportunities_route_observed_idx
+    ON opportunities (route_id, observed_at DESC);
 ```
+
+An opportunity row is one sighting, inserted on every tick. route_id is a hash of the venues and symvols traded, id identifies the specific observation. This maintains a history of the observed opportunities.
+
+The legs track the individual trades made on the specific venues, tracking the volume-weighted average price and quantity traded. Legs are executed in order and can only be valid if the asset_out matches the next legs asset_in, with the last leg returning to the starting asset. In the case of the cross venue strategy two legs are created: buy BTC/USD on Kraken, sell BTC/USD on Coinbase, starting and ending in USD.
+
+Example trading leg:
+```
+{
+    Venue: "kraken", Symbol: "BTC/USD", Side: Buy,
+    Base: "BTC", Quote: "USD", AssetIn: "USD", AssetOut: "BTC",
+    AmountIn: dec("10000"), AmountOut: dec("0.2"), Price: dec("50000"), Qty: dec("0.2"),
+}
+```
+
+The legs are stored as a JSON blob rather than a separate table because they are read and written as one unit (an opportunity).
 
 ## API
 
@@ -126,16 +171,16 @@ Backend API served by default on port 8080. Acts as a read-only service for quer
 ### GET /opportunities
 
 The backend is pre-loaded with opportunity data for demo purposes. This can be queried with:
-/opportunities?from=2026-09-06T00:00:00Z&to=2026-09-07T00:00:00Z
+/opportunities?limit=5
 ```
 {
     "opportunities":[
         {
-            "id":"e1cde795532b4c18a67c57290c8d6cf2",
+            "id":"135cf929d7a35ac67ed31edac5f7ea1f",
+            "route_id":"e1cde795532b4c18a67c57290c8d6cf2",
             "strategy":"cross_venue",
             "config_id":"v1",
-            "first_seen_at":"2026-09-06T08:44:35.281035Z",
-            "last_seen_at":"2026-09-06T08:53:15.281035Z",
+            "observed_at":"2026-09-06T08:53:15.281035Z",
             "start_asset":"USD",
             "amount_in":"14528.27556",
             "amount_out":"14562.3168",
@@ -143,7 +188,6 @@ The backend is pre-loaded with opportunity data for demo purposes. This can be q
             "fees":"96.15876",
             "net_profit":"34.04124",
             "net_edge_bps":"23.431",
-            "max_edge_bps":"42.1758",
             "legs":[{
                 "venue":"kraken",
                 "symbol":"ETH/USD",
@@ -181,23 +225,6 @@ List the available strategies
 Health check
 ```
 {"status":"ok"}
-```
-
-## Testing
-
-### Running the tests
-
-```bash
-docker compose --profile test run --rm test
-```
-
-Unit tests only: no network, no database. Tagged tests are excluded by default —
-`db` runs against the compose Postgres, dropping and recreating `arb_test`;
-`live` tests against the Kraken and Coinbase exchanges.
-
-```bash
-docker compose --profile test run --rm test go test -tags=db ./...
-docker compose --profile test run --rm test go test -tags=live ./...
 ```
 
 ## Trade-offs and what I would do next
