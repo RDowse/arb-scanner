@@ -236,3 +236,12 @@ Health check
 ```
 
 ## Further Work
+
+Possible extensions to the current work, out of scope for this challenge.
+
+- publish opportunities to a Kafka topic. Consumers currently have to poll Postgres and only see what was last written, a topic would give a push stream which could then be forwarded to the end user. This is only if live updates are required, otherwise this is overkill.
+- add a retention policy for the opportunities table. It is append-only so it grows with time rather than with the number of routes, with time-based partitioning as the implementation once retention exists.
+- report feed health through the API. MaxFeedAge is currently unused and /health cannot tell a caller that a feed or the detector has died, which is the failure the two-process split was meant to make visible.
+- move the detector configuration out of main.go and into a config file, with individual configurations per strategy.
+- retry or buffer failed writes. For the Store if an insert fails the rows are just logged and dropped.
+- add cursor pagination to /opportunities. The response envelope was shaped for it but only limit is supported.
