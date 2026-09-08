@@ -12,13 +12,15 @@ Two exchanges are covered (Coinbase and Kraken) with a cross-venue strategy to i
 docker compose up -d --build
 ```
 
-The api-server runs on [localhost:8080](http://localhost:8080). On startup the database is pre-populated with four demonstration rows; these are not real detections. The detector service connects to Kraken and Coinbase websocket books and writes opportunities.
+The api-server runs on [localhost:8080](http://localhost:8080). On startup the database is pre-populated with four demonstration rows; these are not real detections.
 
 Example requests:
 ```bash
 curl -s localhost:8080/health
 curl -s 'localhost:8080/opportunities?limit=5'
 ```
+
+The detector service connects to two exchanges (Kraken and Coinbase) and writes arbitrage opportunities.
 
 To follow the detector logs which are by default set to debug mode for demonstration purposes:
 ```bash
@@ -37,9 +39,9 @@ docker compose down
 docker compose --profile test run --rm test
 ```
 
-Unit tests only: no network, no database. Tagged tests are excluded by default —
-`db` runs against the compose Postgres, dropping and recreating `arb_test`;
-`live` tests against the Kraken and Coinbase exchanges.
+By default only unittests are run.
+
+Tagged tests can be run to test against the db instance and the live exchanges.
 
 ```bash
 docker compose --profile test run --rm test go test -tags=db ./...
@@ -239,7 +241,7 @@ Health check
 
 Possible extensions to the current work, out of scope for this challenge.
 
-- Publish opportunities to a Kafka topic. Consumers currently have to poll Postgres and only see what was last written, a topic would give a push stream which could then be forwarded to the end user. This is only if live updates are required, otherwise this is overkill.
+- Publish opportunities to a Kafka topic. Consumers currently have to poll Postgres and only see what was last written, a topic would allow us to push updates which could then be forwarded to the end user. This is only if live updates are required, otherwise this is overkill.
 - Report venue feed health through an API, so that we can track disconnection issues.
 - Move the detector configuration out of `main.go` and into a config file, with individual configurations per strategy.
 - Retry or buffer failed writes. For the Store if an insert fails the rows are just logged and dropped.
