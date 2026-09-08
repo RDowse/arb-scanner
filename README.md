@@ -90,7 +90,7 @@ The read and write paths are separated into two apps rather than a single proces
 - a dropped feed or crashed detector process does not stop the serving of existing opportunities.
 - redeployment of the api-server does not affect existing venue subscriptions or the in-memory order books.
 
-The trade-off here is that the two processes can only communicate through the Postgres table, which acts as the contract them, rather than reading a live stream of updates within a single process. This is revisited in the ##Further-Work section.
+The trade-off here is that the two processes can only communicate through the Postgres table, which acts as the contract between them, rather than reading a live stream of updates within a single process. This is revisited in [Further Work](#further-work).
 
 ### Data flow
 
